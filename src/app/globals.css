@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f5f0e8;
+  --color-text: #1c1917;
+  --color-muted: #6b6660;
+  --color-border: #e2dad0;
+  --color-primary: #1b4f72;
+  --color-primary-hover: #163f5c;
+  --color-accent: #2d6a4f;
+  --color-surface: #ffffff;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --font-body: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.font-display {
+  font-family: var(--font-display), serif;
+}
+
+.font-body {
+  font-family: var(--font-body), sans-serif;
+}
+
+.chip-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.chip-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.fade-in {
+  animation: fade-in 300ms ease forwards;
+}
+
+.loading-dot {
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+
+.role-line {
+  stroke-dasharray: 4 3;
+  stroke-dashoffset: 120;
+  animation: line-draw 600ms ease-in-out forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 120;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
