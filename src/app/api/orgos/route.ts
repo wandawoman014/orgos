@@ -1,3 +1,4 @@
+import { getMemories, saveMemory } from "@/lib/memory";
 import { NextRequest, NextResponse } from "next/server";
 
 type ResourceItem = {
@@ -252,6 +253,7 @@ export async function POST(req: NextRequest) {
   const team = asString(contextValue.team) || asString(payload.team) || "";
   const intent = asString(contextValue.intent) || asString(payload.intent) || "";
   const companyId = asString(payload.company_id) || inferCompanyId(company) || undefined;
+  const userId = asString(payload.user_id) || asString(payload.userId) || undefined;
 
   if (!message) {
     return NextResponse.json({ error: "Message cannot be blank." }, { status: 400 });
@@ -278,6 +280,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const memoryContext = userId ? await getMemories(userId) : "";
     const webhookResponse = await fetch(webhookUrl, {
       method: "POST",
       headers: {
@@ -288,6 +291,8 @@ export async function POST(req: NextRequest) {
         query: message,
         company,
         ...(companyId ? { company_id: companyId } : {}),
+        ...(userId ? { user_id: userId } : {}),
+        ...(memoryContext ? { memory_context: memoryContext } : {}),
         ...(team ? { team } : {}),
         ...(intent ? { intent } : {}),
         mode: "org",
@@ -309,11 +314,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Data mismatch - please retry" }, { status: 409 });
     }
 
+    const answer = normalized.answer || fallbackAnswer(company, intent);
+    const roleMap = normalized.roleMap || (normalized.needsFollowUp ? undefined : fallbackRoleMap);
+
+    if (userId && answer) {
+      await saveMemory(userId, message, answer);
+    }
+
     return NextResponse.json(
       {
-        answer: normalized.answer || fallbackAnswer(company, intent),
+        answer,
         ...(normalized.reportUrl ? { reportUrl: normalized.reportUrl } : {}),
-        ...(normalized.roleMap ? { roleMap: normalized.roleMap } : {}),
+        ...(roleMap ? { roleMap } : {}),
         ...(normalized.needsFollowUp ? { needsFollowUp: true } : {}),
         ...(normalized.followUpQuestion ? { followUpQuestion: normalized.followUpQuestion } : {}),
         ...(normalized.companyId || companyId ? { companyId: normalized.companyId || companyId } : {}),
