@@ -110,6 +110,14 @@ type OrgTemplateValues = {
   questionFocus: string;
 };
 
+type OrgTemplatePreset = {
+  label: string;
+  industry: string;
+  company: string;
+  yearlyGoal: string;
+  questionFocus: string;
+};
+
 const GENERIC_ORG_REPORT_URL = "https://drive.google.com/drive/folders/1VSCUVd2pwafNyXxPFj02dVPv5wEv3Ba9?usp=sharing";
 
 const knownCompanies = ["Figma", "Accenture", "McKinsey", "Goldman Sachs", "Deloitte", "Infosys", "Tata 1MG"];
@@ -217,6 +225,30 @@ const departmentBorderColors: Record<string, string> = {
   Leadership: "#1B4F72",
   Default: "#6B6660",
 };
+
+const orgTemplatePresets: OrgTemplatePreset[] = [
+  {
+    label: "Product SaaS",
+    industry: "Figma",
+    company: "Figma",
+    yearlyGoal: "reduce time to AI feature shipment by 25%",
+    questionFocus: "how to restructure our product, engineering and design teams",
+  },
+  {
+    label: "Services",
+    industry: "Accenture",
+    company: "Accenture",
+    yearlyGoal: "deploy AI assistants across 50% of client delivery teams",
+    questionFocus: "how to redesign consulting, delivery and enablement roles around those assistants",
+  },
+  {
+    label: "Financial Services",
+    industry: "Goldman Sachs",
+    company: "Goldman Sachs",
+    yearlyGoal: "automate 25% of trading and risk analysis workflows",
+    questionFocus: "which teams, controls and decision roles need to evolve first",
+  },
+];
 
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -549,7 +581,7 @@ function AnswerContent({ answer }: { answer: string }) {
         if (block.type === "unordered") {
           return (
             <ul key={`${block.type}-${index}`} className="mb-4 list-none p-0">
-              {block.items.map((item) => (
+              {block.items.map((item) =>
                 /:$/.test(item) ? (
                   <li key={item} className="mb-2 pt-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted last:mb-0">
                     {item.slice(0, -1)}
@@ -559,8 +591,8 @@ function AnswerContent({ answer }: { answer: string }) {
                     <span className="mr-2.5 inline-block h-2 w-2 rounded-full bg-primary align-middle" />
                     <span className="align-middle">{item}</span>
                   </li>
-                )
-              ))}
+                ),
+              )}
             </ul>
           );
         }
@@ -783,36 +815,129 @@ function LearningPathPanel({ role, onClose }: { role: FutureRoleNode; onClose: (
             </div>
           </div>
         </div>
-      ) : (
-        <p className="text-[14px] italic text-muted">Full learning path available in your CareerOS report.</p>
-      )}
+      ) : null}
+    </section>
+  );
+}
+
+function CareerEvolutionMap({
+  roleMap,
+  selectedRoleId,
+  onSelectRole,
+}: {
+  roleMap: RoleMap;
+  selectedRoleId: string | null;
+  onSelectRole: (roleId: string) => void;
+}) {
+  const currentNodes = getCurrentNodes(roleMap);
+  const futureNodes = getFutureNodes(roleMap);
+  const rowCount = Math.max(currentNodes.length, futureNodes.length, 1);
+  const svgHeight = Math.max(rowCount * 88 + 20, 120);
+  const currentY = new Map(currentNodes.map((node, index) => [node.id, 34 + index * 88]));
+  const futureY = new Map(futureNodes.map((node, index) => [node.id, 34 + index * 88]));
+
+  return (
+    <section className="mt-12">
+      <h2 className="font-display mb-2 text-[24px] text-text">Your Career Evolution Map</h2>
+      <p className="mb-8 text-[14px] text-muted">Where your strengths can take you</p>
+
+      <div className="grid grid-cols-[1fr_80px_1fr] gap-0 max-md:grid-cols-1 max-md:gap-4">
+        <div>
+          {currentNodes.map((node) => {
+            const borderColor = departmentBorderColors[node.department] || departmentBorderColors.Default;
+            return (
+              <article
+                key={node.id}
+                className="mb-3 rounded-[6px] border border-border bg-surface px-4 py-3 shadow-[0_1px_3px_rgba(28,25,23,0.08)]"
+                style={{ borderLeft: `3px solid ${borderColor}` }}
+              >
+                <p className="text-[14px] font-semibold text-text">{node.label}</p>
+                <p className="mt-0.5 text-[12px] text-muted">{node.department}</p>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="flex items-stretch justify-center max-md:hidden">
+          <svg width="80" height={svgHeight} viewBox={`0 0 80 ${svgHeight}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="careeros-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L9,3 z" fill="var(--color-primary)" />
+              </marker>
+            </defs>
+            {roleMap.edges.map((edge, index) => {
+              const startY = currentY.get(edge.from);
+              const endY = futureY.get(edge.to);
+              if (!startY || !endY) {
+                return null;
+              }
+
+              return (
+                <path
+                  key={`${edge.from}-${edge.to}`}
+                  className="role-line"
+                  d={`M8 ${startY} C 28 ${startY}, 52 ${endY}, 72 ${endY}`}
+                  stroke="var(--color-primary)"
+                  strokeWidth="1.5"
+                  opacity="0.4"
+                  markerEnd="url(#careeros-arrow)"
+                  style={{ animationDelay: `${index * 120}ms` }}
+                />
+              );
+            })}
+          </svg>
+        </div>
+
+        <div>
+          {futureNodes.map((node) => {
+            const active = selectedRoleId === node.id;
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => onSelectRole(node.id)}
+                className={`mb-3 w-full rounded-[6px] bg-primary px-4 py-3 text-left text-white shadow-[0_1px_3px_rgba(28,25,23,0.08)] transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-[0_4px_12px_rgba(184,92,44,0.25)] ${active ? "ring-2 ring-[rgba(255,255,255,0.45)]" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[14px] font-semibold text-white">{node.label}</p>
+                    <p className="mt-0.5 text-[12px] text-white/80">{node.description}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] text-white ${node.fit === "High Fit" ? "bg-white/20" : "bg-white/12"}`}>
+                    {node.fit}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }
 
 export default function Home() {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const resizeFrameRef = useRef<number | null>(null);
   const debounceRef = useRef<number | null>(null);
   const [userId, setUserId] = useState("");
   const [message, setMessage] = useState("");
-  const [context, setContext] = useState<OrgContext>({});
+  const [context, setContext] = useState<CareerContext>({});
   const [answer, setAnswer] = useState("");
   const [reportUrl, setReportUrl] = useState("");
   const [source, setSource] = useState<"live" | "mock" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [roleMap, setRoleMap] = useState<RoleMap | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [activeCompanyName, setActiveCompanyName] = useState("");
-  const [roleMap, setRoleMap] = useState<RoleMap | null>(null);
-  const [editingKey, setEditingKey] = useState<OrgContextKey | null>(null);
+  const [editingKey, setEditingKey] = useState<CareerContextKey | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [needsFollowUp, setNeedsFollowUp] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
-  const [templateValues, setTemplateValues] = useState<OrgTemplateValues>({
-    company: "Figma",
-    yearlyGoal: "reduce time to AI feature shipment by 25%",
-    questionFocus: "how to restructure our product, engineering and design teams",
+  const [templateValues, setTemplateValues] = useState<CareerTemplateValues>({
+    name: "Priya Nair",
+    currentRole: "Product Designer",
+    currentOrg: "Figma",
+    targetOrg: "Figma",
   });
 
   const derivedRoleMap = useMemo(() => {
@@ -822,8 +947,8 @@ export default function Home() {
 
     return buildRoleMap(parseRoleConnections(answer));
   }, [answer, roleMap]);
-  const showRoleMap = !needsFollowUp && getCurrentNodes(derivedRoleMap).length > 0 && getFutureNodes(derivedRoleMap).length > 0;
   const selectedRole = getSelectedFutureRole(derivedRoleMap, selectedRoleId);
+  const futureNodes = getFutureNodes(derivedRoleMap);
 
   useEffect(() => {
     let id = window.localStorage.getItem("evo_user_id");
@@ -840,7 +965,7 @@ export default function Home() {
     }
 
     debounceRef.current = window.setTimeout(() => {
-      setContext(extractOrgContext(message));
+      setContext(extractCareerContext(message));
     }, 220);
 
     return () => {
@@ -850,42 +975,15 @@ export default function Home() {
     };
   }, [message]);
 
-  function scheduleTextareaResize(element: HTMLTextAreaElement) {
-    if (resizeFrameRef.current !== null) {
-      cancelAnimationFrame(resizeFrameRef.current);
-    }
-
-    resizeFrameRef.current = requestAnimationFrame(() => {
-      element.style.height = "auto";
-      element.style.height = `${Math.max(element.scrollHeight, 140)}px`;
-      resizeFrameRef.current = null;
-    });
-  }
-
-  function handleSuggestionClick(chip: string) {
-    setMessage(chip);
-    setNeedsFollowUp(false);
-    setFollowUpQuestion("");
-    setError("");
-    if (textareaRef.current) {
-      textareaRef.current.value = chip;
-      scheduleTextareaResize(textareaRef.current);
-    }
-  }
-
   function applyTemplate(prompt: string) {
     setMessage(prompt);
-    setContext(extractOrgContext(prompt));
+    setContext(extractCareerContext(prompt));
     setNeedsFollowUp(false);
     setFollowUpQuestion("");
     setError("");
-    if (textareaRef.current) {
-      textareaRef.current.value = prompt;
-      scheduleTextareaResize(textareaRef.current);
-    }
   }
 
-  function handleStartEdit(key: OrgContextKey, value: string) {
+  function handleStartEdit(key: CareerContextKey, value: string) {
     setEditingKey(key);
     setEditingValue(value);
   }
@@ -909,7 +1007,7 @@ export default function Home() {
     setEditingValue("");
   }
 
-  function handleRemoveChip(key: OrgContextKey) {
+  function handleRemoveChip(key: CareerContextKey) {
     setContext((current) => {
       const nextContext = { ...current };
       delete nextContext[key];
@@ -935,24 +1033,21 @@ export default function Home() {
       return;
     }
 
-    const companyLabel = context.company?.value || "this organization";
-
     setLoading(true);
     setError("");
     setNeedsFollowUp(false);
     setFollowUpQuestion("");
-    setSelectedRoleId(null);
-    setActiveCompanyName(companyLabel);
+    setActiveCompanyName(context.company?.value || "this company");
 
     try {
-      const response = await fetch("/api/orgos", {
+      const response = await fetch("/api/careeros", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           message,
-          mode: "org",
+          mode: "career",
           user_id: userId,
           context: serializeContext(context),
         }),
@@ -960,16 +1055,28 @@ export default function Home() {
 
       const data = (await response.json()) as ApiResponse;
       if (!response.ok) {
-        throw new Error(data.error || "Unable to reach OrgOS.");
+        throw new Error(data.error || "Unable to reach CareerOS.");
       }
 
       const nextAnswer = (data.answer || "").trim();
+      const nextRoleMap = data.roleMap || buildRoleMap(data.roleConnections?.length ? data.roleConnections : parseRoleConnections(nextAnswer));
+      const nextFutureNodes = getFutureNodes(nextRoleMap).map((node) => ({
+        ...node,
+        learningPath: node.learningPath || defaultLearningPathForRole({ title: node.label, description: node.description, fit: node.fit }),
+      }));
+      const hydratedRoleMap: RoleMap = {
+        nodes: [...getCurrentNodes(nextRoleMap), ...nextFutureNodes],
+        edges: nextRoleMap.edges,
+      };
+      const nextSelectedRoleId = nextFutureNodes.find((node) => node.learningPath)?.id || nextFutureNodes[0]?.id || null;
+
       setAnswer(nextAnswer);
-      setReportUrl(data.reportUrl || "");
+      setReportUrl(data.reportUrl || GENERIC_PATHWAY_REPORT_URL);
       setSource(data.source || "live");
       setNeedsFollowUp(Boolean(data.needsFollowUp));
       setFollowUpQuestion(data.followUpQuestion || "");
-      setRoleMap(data.roleMap || (nextAnswer ? buildRoleMap(parseRoleConnections(nextAnswer)) : null));
+      setRoleMap(hydratedRoleMap);
+      setSelectedRoleId(nextSelectedRoleId);
     } catch (submitError) {
       const nextMessage = submitError instanceof Error ? submitError.message : "Something went wrong.";
       setError(nextMessage);
@@ -985,53 +1092,51 @@ export default function Home() {
     }
   }
 
-  const chips: Array<{ key: OrgContextKey; label: string; chip?: ChipValue; accentClass: string }> = [
-    { key: "company", label: "Company", chip: context.company, accentClass: "border-[rgba(27,79,114,0.18)] bg-[rgba(27,79,114,0.05)]" },
-    { key: "team", label: "Team", chip: context.team, accentClass: "border-border bg-surface" },
+  const chips: Array<{ key: CareerContextKey; label: string; chip?: ChipValue; accentClass: string }> = [
+    { key: "current_role", label: "Role", chip: context.current_role, accentClass: "border-[rgba(184,92,44,0.18)] bg-[rgba(184,92,44,0.05)]" },
+    { key: "company", label: "Company", chip: context.company, accentClass: "border-border bg-surface" },
     { key: "intent", label: "Intent", chip: context.intent, accentClass: "border-border bg-surface" },
   ];
 
   return (
     <main className="bg-bg text-text">
-      <nav className="h-14 border-b border-border bg-surface">
+      <nav className="sticky top-0 z-30 h-14 border-b border-border bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-full max-w-[860px] items-center justify-between px-6">
-          <span className="font-display text-[20px] text-primary">OrgOS</span>
-          <a href="https://careeros-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-[14px] text-muted transition hover:text-primary">
-            {"-> CareerOS"}
+          <span className="font-display text-[20px] text-primary">CareerOS</span>
+          <a href="https://orgos-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-[14px] text-muted transition hover:text-primary">
+            {"<- OrgOS"}
           </a>
         </div>
       </nav>
 
       <div className="mx-auto max-w-[860px] px-6 pb-16">
         <section className="pb-12 pt-16">
-          <p className="mb-3 text-[11px] uppercase tracking-[0.12em] text-muted">ORGOS - ROLE INTELLIGENCE</p>
-          <h1 className="font-display max-w-[620px] text-[48px] leading-[1.15] text-text max-md:text-[40px]">
-            Redesign your org
+          <p className="mb-3 text-[11px] uppercase tracking-[0.12em] text-muted">CAREEROS - CAREER INTELLIGENCE</p>
+          <h1 className="font-display max-w-[680px] text-[48px] leading-[1.15] text-text max-md:text-[40px]">
+            Find where you belong
             <br />
-            for the <span className="text-primary">AI era.</span>
+            in <span className="text-primary">what comes next.</span>
           </h1>
           <p className="mt-5 max-w-[520px] text-[17px] leading-[1.7] text-muted">
-            Understand how roles need to evolve. Powered by live intelligence and your organizational context.
+            Map your strengths to the roles organizations are actually building. No fear. Just a clear path forward.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-10">
             <div>
               <label htmlFor="message" className="mb-2 block text-[13px] text-muted">
-                What would you like to understand about this organization?
+                Describe where you are and where you want to go
               </label>
               <textarea
                 id="message"
-                ref={textareaRef}
                 value={message}
                 onChange={(event) => {
                   setMessage(event.target.value);
                   setNeedsFollowUp(false);
                   setFollowUpQuestion("");
                   setError("");
-                  scheduleTextareaResize(event.target);
                 }}
-                placeholder="e.g. What are the top future roles at Figma? What change risks should Accenture leadership act on first? How is McKinsey restructuring for AI?"
-                className="min-h-[140px] w-full resize-none rounded-[12px] border border-border bg-surface px-5 py-4 text-[16px] text-text outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(27,79,114,0.1)]"
+                placeholder="e.g. Where can a UX researcher grow at Figma? I'm a PM. What's next for me in AI-era teams? I don't want to become an engineer. What roles fit me at Accenture?"
+                className="min-h-[140px] w-full resize-none rounded-[12px] border border-border bg-surface px-5 py-4 text-[16px] text-text outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(184,92,44,0.1)]"
               />
             </div>
 
@@ -1064,42 +1169,45 @@ export default function Home() {
               <div className="flex items-start justify-between gap-4 max-md:flex-col">
                 <div>
                   <p className="text-[12px] uppercase tracking-[0.08em] text-muted">Guided prompt</p>
-                  <h3 className="font-display mt-2 text-[24px] leading-tight text-text">Fill in the blanks, then ask OrgOS</h3>
+                  <h3 className="font-display mt-2 text-[24px] leading-tight text-text">Fill in the blanks, then map your path</h3>
                   <p className="mt-2 max-w-[560px] text-[14px] leading-6 text-muted">
-                    Use one clear operating sentence so the question feels strategic, not technical.
+                    Keep it personal and readable, so the ask feels like a real career brief.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() =>
-                    applyTemplate(
-                      `At ${templateValues.company}, our goal this year is to ${templateValues.yearlyGoal}, and for that we need to know ${templateValues.questionFocus}.`,
-                    )
-                  }
-                  className="rounded-[999px] border border-primary px-4 py-2 text-[13px] font-medium text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
+                  onClick={() => applyTemplate(buildCareerTemplatePrompt(templateValues))}
+                  className="rounded-[999px] border border-primary px-4 py-2 text-[13px] font-medium text-primary transition hover:bg-[rgba(184,92,44,0.05)]"
                 >
                   Use this template
                 </button>
               </div>
 
-              <div className="mt-5 rounded-[14px] bg-[rgba(27,79,114,0.04)] px-4 py-4 text-[18px] leading-[1.9] text-text max-md:text-[16px]">
-                <span className="text-muted">At </span>
+              <div className="mt-5 rounded-[14px] bg-[rgba(184,92,44,0.05)] px-4 py-4 text-[18px] leading-[1.9] text-text max-md:text-[16px]">
+                <span className="text-muted">I am </span>
                 <input
-                  value={templateValues.company}
-                  onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
-                  className="mx-1 inline-block min-w-[120px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
+                  value={templateValues.name}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, name: event.target.value }))}
+                  className="mx-1 inline-block min-w-[160px] rounded-[10px] border border-[rgba(184,92,44,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
                 />
-                <span className="text-muted"> our goal this year is to </span>
+                <span className="text-muted">, </span>
                 <input
-                  value={templateValues.yearlyGoal}
-                  onChange={(event) => setTemplateValues((current) => ({ ...current, yearlyGoal: event.target.value }))}
-                  className="mx-1 inline-block min-w-[320px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none max-md:min-w-[220px]"
+                  value={templateValues.currentRole}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, currentRole: event.target.value }))}
+                  className="mx-1 inline-block min-w-[180px] rounded-[10px] border border-[rgba(184,92,44,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
                 />
-                <span className="text-muted"> and for that we need to know </span>
+                <span className="text-muted"> at </span>
                 <input
-                  value={templateValues.questionFocus}
-                  onChange={(event) => setTemplateValues((current) => ({ ...current, questionFocus: event.target.value }))}
-                  className="mx-1 inline-block min-w-[360px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none max-md:min-w-[240px]"
+                  value={templateValues.currentOrg}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, currentOrg: event.target.value }))}
+                  className="mx-1 inline-block min-w-[170px] rounded-[10px] border border-[rgba(184,92,44,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
+                />
+                <span className="text-muted"> and looking for relevant AI empowered career path at </span>
+                <input
+                  value={templateValues.targetOrg}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, targetOrg: event.target.value }))}
+                  placeholder="Optional target org name"
+                  className="mx-1 inline-block min-w-[230px] rounded-[10px] border border-[rgba(184,92,44,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
                 />
               </div>
             </div>
@@ -1109,11 +1217,15 @@ export default function Home() {
               disabled={loading}
               className="mt-5 inline-flex rounded-[6px] border-none bg-primary px-7 py-3 text-[15px] font-medium text-white transition duration-150 ease-out hover:-translate-y-px hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Ask OrgOS
+              Map My Path
             </button>
           </form>
 
-          {error ? <p className="mt-4 text-[14px] text-primary">{error}</p> : null}
+          {error ? (
+            <div className="mt-4 rounded-[10px] border border-[rgba(184,92,44,0.25)] bg-[rgba(184,92,44,0.08)] px-4 py-3 text-[14px] text-primary">
+              {error}
+            </div>
+          ) : null}
 
           {loading ? (
             <section className="fade-in mt-8 rounded-[6px] border border-border border-l-[3px] border-l-primary bg-surface px-8 py-7 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
@@ -1126,23 +1238,25 @@ export default function Home() {
                   />
                 ))}
               </div>
-              <p className="text-[14px] italic text-muted">Analyzing {activeCompanyName || "this organization"}...</p>
+              <p className="text-[14px] italic text-muted">CareerOS is mapping your path{activeCompanyName && activeCompanyName !== "this company" ? ` for ${activeCompanyName}` : ""}...</p>
             </section>
           ) : null}
 
           {!loading && answer ? (
             <section className="fade-in mt-8 rounded-[6px] border border-border border-l-[3px] border-l-primary bg-surface px-8 py-7 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
               <AnswerContent answer={answer} />
-              <div className="my-6 border-t border-border" />
-              {(reportUrl || GENERIC_ORG_REPORT_URL) ? (
-                <a
-                  href={reportUrl || GENERIC_ORG_REPORT_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex rounded-[6px] border border-primary bg-transparent px-5 py-2.5 text-[14px] text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
-                >
-                  Open Full Report Doc
-                </a>
+              {reportUrl ? (
+                <>
+                  <div className="my-6 border-t border-border" />
+                  <a
+                    href={reportUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex rounded-[6px] border border-primary bg-transparent px-5 py-2.5 text-[14px] text-primary transition hover:bg-[rgba(184,92,44,0.05)]"
+                  >
+                    Open Career Pathway Doc
+                  </a>
+                </>
               ) : null}
               {source ? <p className="mt-3 text-[12px] text-muted">Source: {source === "live" ? "Live intelligence" : "Sample fallback"}</p> : null}
             </section>
@@ -1152,27 +1266,21 @@ export default function Home() {
             <section className="fade-in mt-6 rounded-[6px] border border-border bg-surface px-6 py-5 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
               <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-muted">Follow-up</p>
               <p className="mt-2 text-[15px] leading-7 text-text">{followUpQuestion}</p>
-              <p className="mt-2 text-[13px] text-muted">Update the message or edit the chips above, then ask again.</p>
+              <p className="mt-2 text-[13px] text-muted">Update the message or chips above, then ask again.</p>
             </section>
           ) : null}
 
-          {showRoleMap ? (
-            <>
-              <RoleEvolutionMap roleMap={derivedRoleMap} selectedRoleId={selectedRoleId} onSelectRole={setSelectedRoleId} />
-              <div
-                className="overflow-hidden transition-[max-height] duration-350 ease-in-out"
-                style={{ maxHeight: selectedRole ? "640px" : "0px" }}
-              >
-                {selectedRole ? <LearningPathPanel role={selectedRole} onClose={() => setSelectedRoleId(null)} /> : null}
-              </div>
-            </>
+          {!loading && selectedRole && selectedRole.learningPath ? <LearningPathPanel role={selectedRole} onClose={() => setSelectedRoleId(null)} /> : null}
+
+          {!loading && !needsFollowUp && futureNodes.length > 0 ? (
+            <CareerEvolutionMap roleMap={derivedRoleMap} selectedRoleId={selectedRoleId} onSelectRole={setSelectedRoleId} />
           ) : null}
         </section>
 
         <footer className="mt-20 flex items-center justify-between border-t border-border py-8 text-[13px] text-muted max-sm:flex-col max-sm:items-start max-sm:gap-3">
-          <span>OrgOS by EvolutionOS</span>
-          <a href="https://careeros-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-primary">
-            {"-> Try CareerOS"}
+          <span>CareerOS by EvolutionOS</span>
+          <a href="https://orgos-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-primary">
+            {"-> Try OrgOS"}
           </a>
         </footer>
       </div>
