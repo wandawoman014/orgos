@@ -4,7 +4,10 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 
 type ApiResponse = {
   answer?: string;
+  companyId?: string;
+  companyName?: string;
   reportUrl?: string;
+  roleMap?: RoleMap;
   source?: "live" | "mock";
   error?: string;
 };
@@ -44,6 +47,48 @@ type RoleConnection = {
   future: FutureRole;
 };
 
+type CurrentRoleNode = {
+  id: string;
+  label: string;
+  type: "current";
+  department: string;
+};
+
+type FutureRoleNode = {
+  id: string;
+  label: string;
+  type: "future";
+  description: string;
+  fit: "High Fit" | "Medium Fit";
+  learningPath?: LearningPath;
+};
+
+type RoleMapNode = CurrentRoleNode | FutureRoleNode;
+
+type RoleMapEdge = {
+  from: string;
+  to: string;
+};
+
+type RoleMap = {
+  nodes: RoleMapNode[];
+  edges: RoleMapEdge[];
+};
+
+type CompanyContext = {
+  companyId: string;
+  companyName: string;
+};
+
+const companyDirectory: Array<CompanyContext & { aliases: string[] }> = [
+  { companyName: "Figma", companyId: "ORG-FIGMA-001", aliases: ["figma"] },
+  { companyName: "Accenture", companyId: "ORG-ACCENTURE-001", aliases: ["accenture"] },
+  { companyName: "McKinsey", companyId: "ORG-MCKINSEY-001", aliases: ["mckinsey"] },
+  { companyName: "Goldman Sachs", companyId: "ORG-GOLDMAN-001", aliases: ["goldman sachs", "goldman"] },
+  { companyName: "Deloitte", companyId: "ORG-DELOITTE-001", aliases: ["deloitte"] },
+  { companyName: "Infosys", companyId: "ORG-INFOSYS-001", aliases: ["infosys"] },
+];
+
 const suggestionChips = [
   "Top 3 future roles at Figma",
   "Show change risks at Accenture",
@@ -70,12 +115,12 @@ const fallbackConnections: RoleConnection[] = [
           {
             title: "Human-Centered AI Design Patterns",
             source: "EvolutionOS Library",
-            url: "https://careeros.vercel.app",
+            url: "https://careeros-supriya.vercel.app/",
           },
           {
             title: "Prompting for Product Teams",
             source: "EvolutionOS Library",
-            url: "https://careeros.vercel.app",
+            url: "https://careeros-supriya.vercel.app/",
           },
         ],
       },
@@ -98,7 +143,7 @@ const fallbackConnections: RoleConnection[] = [
           {
             title: "AI Experimentation Playbook",
             source: "EvolutionOS Library",
-            url: "https://careeros.vercel.app",
+            url: "https://careeros-supriya.vercel.app/",
           },
         ],
       },
@@ -121,7 +166,7 @@ const fallbackConnections: RoleConnection[] = [
           {
             title: "Decision Storytelling for AI Teams",
             source: "EvolutionOS Library",
-            url: "https://careeros.vercel.app",
+            url: "https://careeros-supriya.vercel.app/",
           },
         ],
       },
@@ -136,6 +181,33 @@ const departmentBorderColors: Record<string, string> = {
   Research: "#5B21B6",
   Default: "#6B6660",
 };
+
+function normalizeLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function resolveCompanyContext(...candidates: string[]): CompanyContext | null {
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeLookup(candidate);
+    if (!normalizedCandidate) {
+      continue;
+    }
+
+    const match = companyDirectory.find((company) =>
+      company.aliases.some((alias) => normalizedCandidate === normalizeLookup(alias) || normalizedCandidate.includes(normalizeLookup(alias))),
+    );
+
+    if (match) {
+      return { companyId: match.companyId, companyName: match.companyName };
+    }
+  }
+
+  return null;
+}
+
+function getRequestedCompanyLabel(company: string, query: string) {
+  return company.trim() || resolveCompanyContext(query)?.companyName || "this company";
+}
 
 function normalizeArrowLine(line: string) {
   if (line.includes("->")) {
@@ -260,6 +332,14 @@ function parseRoleConnections(answer: string): RoleConnection[] {
       return [{ current: parseCurrentRole(left), future: parseFutureRole(right) }];
     }
 
+    if (line.includes("->")) {
+      const [left, right] = line.split("->");
+      if (!left || !right) {
+        return [];
+      }
+      return [{ current: parseCurrentRole(left), future: parseFutureRole(right) }];
+    }
+
     if (/ maps to /i.test(line)) {
       const [left, right] = line.split(/ maps to /i);
       if (!left || !right) {
@@ -299,6 +379,66 @@ function parseRoleConnections(answer: string): RoleConnection[] {
   }
 
   return [];
+}
+
+function buildRoleMap(connections: RoleConnection[]): RoleMap {
+  const currentNodes: CurrentRoleNode[] = [];
+  const futureNodes: FutureRoleNode[] = [];
+  const edges: RoleMapEdge[] = [];
+  const currentNodeIds = new Map<string, string>();
+  const futureNodeIds = new Map<string, string>();
+
+  connections.forEach((connection) => {
+    const currentKey = `${connection.current.title}::${connection.current.department}`;
+    let currentId = currentNodeIds.get(currentKey);
+    if (!currentId) {
+      currentId = `current-${currentNodeIds.size + 1}`;
+      currentNodeIds.set(currentKey, currentId);
+      currentNodes.push({
+        id: currentId,
+        label: connection.current.title,
+        type: "current",
+        department: connection.current.department,
+      });
+    }
+
+    const futureKey = connection.future.title;
+    let futureId = futureNodeIds.get(futureKey);
+    if (!futureId) {
+      futureId = `future-${futureNodeIds.size + 1}`;
+      futureNodeIds.set(futureKey, futureId);
+      futureNodes.push({
+        id: futureId,
+        label: connection.future.title,
+        type: "future",
+        description: connection.future.description,
+        fit: connection.future.fit,
+        learningPath: connection.future.learningPath,
+      });
+    }
+
+    if (!edges.some((edge) => edge.from === currentId && edge.to === futureId)) {
+      edges.push({ from: currentId, to: futureId });
+    }
+  });
+
+  return { nodes: [...currentNodes, ...futureNodes], edges };
+}
+
+function getCurrentNodes(roleMap: RoleMap) {
+  return roleMap.nodes.filter((node): node is CurrentRoleNode => node.type === "current");
+}
+
+function getFutureNodes(roleMap: RoleMap) {
+  return roleMap.nodes.filter((node): node is FutureRoleNode => node.type === "future");
+}
+
+function getSelectedFutureRole(roleMap: RoleMap, selectedRoleId: string | null) {
+  if (!selectedRoleId) {
+    return null;
+  }
+
+  return getFutureNodes(roleMap).find((node) => node.id === selectedRoleId) || null;
 }
 
 function AnswerContent({ answer }: { answer: string }) {
@@ -358,33 +498,38 @@ function AnswerContent({ answer }: { answer: string }) {
 }
 
 function RoleEvolutionMap({
-  connections,
-  selectedRole,
+  roleMap,
+  selectedRoleId,
   onSelectRole,
 }: {
-  connections: RoleConnection[];
-  selectedRole: FutureRole | null;
-  onSelectRole: (role: FutureRole | null) => void;
+  roleMap: RoleMap;
+  selectedRoleId: string | null;
+  onSelectRole: (roleId: string | null) => void;
 }) {
-  const svgHeight = Math.max(connections.length * 88 + 20, 120);
+  const currentNodes = getCurrentNodes(roleMap);
+  const futureNodes = getFutureNodes(roleMap);
+  const rowCount = Math.max(currentNodes.length, futureNodes.length, 1);
+  const svgHeight = Math.max(rowCount * 88 + 20, 120);
+  const currentY = new Map(currentNodes.map((node, index) => [node.id, 34 + index * 88]));
+  const futureY = new Map(futureNodes.map((node, index) => [node.id, 34 + index * 88]));
 
   return (
     <section className="mt-12">
       <h2 className="font-display mb-2 text-[24px] text-text">Role Evolution Map</h2>
-      <p className="mb-8 text-[14px] text-muted">Current roles evolving into future AI-era roles</p>
+      <p className="mb-8 text-[14px] text-muted">Current roles on the left. Future roles on the right.</p>
 
       <div className="grid grid-cols-[1fr_80px_1fr] gap-0 max-md:grid-cols-1 max-md:gap-4">
         <div>
-          {connections.map((connection) => {
-            const borderColor = departmentBorderColors[connection.current.department] || departmentBorderColors.Default;
+          {currentNodes.map((node) => {
+            const borderColor = departmentBorderColors[node.department] || departmentBorderColors.Default;
             return (
               <article
-                key={`current-${connection.current.title}-${connection.future.title}`}
+                key={node.id}
                 className="mb-3 rounded-[6px] border border-border bg-surface px-4 py-3 shadow-[0_1px_3px_rgba(28,25,23,0.08)]"
                 style={{ borderLeft: `3px solid ${borderColor}` }}
               >
-                <p className="text-[14px] font-semibold text-text">{connection.current.title}</p>
-                <p className="mt-0.5 text-[12px] text-muted">{connection.current.department}</p>
+                <p className="text-[14px] font-semibold text-text">{node.label}</p>
+                <p className="mt-0.5 text-[12px] text-muted">{node.department}</p>
               </article>
             );
           })}
@@ -397,19 +542,23 @@ function RoleEvolutionMap({
                 <path d="M0,0 L0,6 L9,3 z" fill="var(--color-primary)" />
               </marker>
             </defs>
-            {connections.map((connection, index) => {
-              const y = 34 + index * 88;
-              const delay = `${index * 120}ms`;
+            {roleMap.edges.map((edge, index) => {
+              const startY = currentY.get(edge.from);
+              const endY = futureY.get(edge.to);
+              if (!startY || !endY) {
+                return null;
+              }
+
               return (
                 <path
-                  key={`line-${connection.current.title}-${connection.future.title}`}
+                  key={`${edge.from}-${edge.to}`}
                   className="role-line"
-                  d={`M8 ${y} C 28 ${y}, 52 ${y}, 72 ${y}`}
+                  d={`M8 ${startY} C 28 ${startY}, 52 ${endY}, 72 ${endY}`}
                   stroke="var(--color-primary)"
                   strokeWidth="1.5"
                   opacity="0.4"
                   markerEnd="url(#orgos-arrow)"
-                  style={{ animationDelay: delay }}
+                  style={{ animationDelay: `${index * 120}ms` }}
                 />
               );
             })}
@@ -417,22 +566,22 @@ function RoleEvolutionMap({
         </div>
 
         <div>
-          {connections.map((connection) => {
-            const active = selectedRole?.title === connection.future.title;
+          {futureNodes.map((node) => {
+            const active = selectedRoleId === node.id;
             return (
               <button
-                key={`future-${connection.current.title}-${connection.future.title}`}
+                key={node.id}
                 type="button"
-                onClick={() => onSelectRole(connection.future)}
+                onClick={() => onSelectRole(node.id)}
                 className={`mb-3 w-full rounded-[6px] bg-primary px-4 py-3 text-left text-white shadow-[0_1px_3px_rgba(28,25,23,0.08)] transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(27,79,114,0.25)] ${active ? "ring-2 ring-[rgba(255,255,255,0.45)]" : ""}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[14px] font-semibold text-white">{connection.future.title}</p>
-                    <p className="mt-0.5 text-[12px] text-white/80">{connection.future.description}</p>
+                    <p className="text-[14px] font-semibold text-white">{node.label}</p>
+                    <p className="mt-0.5 text-[12px] text-white/80">{node.description}</p>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] text-white ${connection.future.fit === "High Fit" ? "bg-white/20" : "bg-white/12"}`}>
-                    {connection.future.fit}
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] text-white ${node.fit === "High Fit" ? "bg-white/20" : "bg-white/12"}`}>
+                    {node.fit}
                   </span>
                 </div>
               </button>
@@ -444,11 +593,11 @@ function RoleEvolutionMap({
   );
 }
 
-function LearningPathPanel({ role, onClose }: { role: FutureRole; onClose: () => void }) {
+function LearningPathPanel({ role, onClose }: { role: FutureRoleNode; onClose: () => void }) {
   return (
     <section className="mt-4 overflow-hidden rounded-[6px] border border-border border-t-[3px] border-t-primary bg-surface px-8 py-7 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
       <div className="mb-6 flex items-start justify-between gap-4">
-        <h3 className="font-display text-[22px] text-text">Your path to {role.title}</h3>
+        <h3 className="font-display text-[22px] text-text">Your path to {role.label}</h3>
         <button type="button" onClick={onClose} className="text-[20px] text-muted transition hover:text-primary">
           x
         </button>
@@ -519,10 +668,19 @@ export default function Home() {
   const [source, setSource] = useState<"live" | "mock" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [selectedRole, setSelectedRole] = useState<FutureRole | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [activeCompanyName, setActiveCompanyName] = useState("");
+  const [roleMap, setRoleMap] = useState<RoleMap | null>(null);
 
-  const roleConnections = useMemo(() => parseRoleConnections(answer), [answer]);
-  const showRoleMap = roleConnections.length > 0;
+  const derivedRoleMap = useMemo(() => {
+    if (roleMap) {
+      return roleMap;
+    }
+
+    return buildRoleMap(parseRoleConnections(answer));
+  }, [answer, roleMap]);
+  const showRoleMap = getCurrentNodes(derivedRoleMap).length > 0 && getFutureNodes(derivedRoleMap).length > 0;
+  const selectedRole = getSelectedFutureRole(derivedRoleMap, selectedRoleId);
 
   function scheduleTextareaResize(element: HTMLTextAreaElement) {
     if (resizeFrameRef.current !== null) {
@@ -538,6 +696,10 @@ export default function Home() {
 
   function handleChipClick(chip: string) {
     setQuery(chip);
+    const inferredCompany = resolveCompanyContext(chip);
+    if (!company.trim() && inferredCompany) {
+      setCompany(inferredCompany.companyName);
+    }
     if (textareaRef.current) {
       textareaRef.current.value = chip;
       scheduleTextareaResize(textareaRef.current);
@@ -551,9 +713,22 @@ export default function Home() {
       return;
     }
 
+    const requestedCompany = resolveCompanyContext(company, query);
+    if (!requestedCompany) {
+      const requestedLabel = getRequestedCompanyLabel(company, query);
+      setError(`No role intelligence available for ${requestedLabel}. Run OrgOS analysis first.`);
+      setAnswer("");
+      setReportUrl("");
+      setRoleMap(null);
+      setSource(null);
+      setSelectedRoleId(null);
+      return;
+    }
+
     setLoading(true);
     setError("");
-    setSelectedRole(null);
+    setSelectedRoleId(null);
+    setActiveCompanyName(requestedCompany.companyName);
 
     try {
       const response = await fetch("/api/orgos", {
@@ -563,7 +738,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           query,
-          company,
+          company: requestedCompany.companyName,
+          company_id: requestedCompany.companyId,
           mode: "org",
         }),
       });
@@ -573,15 +749,25 @@ export default function Home() {
         throw new Error(data.error || "Unable to reach OrgOS.");
       }
 
-      setAnswer((data.answer || "").trim());
+      if (data.companyId !== requestedCompany.companyId) {
+        throw new Error("Data mismatch - please retry");
+      }
+
+      const nextAnswer = (data.answer || "").trim();
+      const nextRoleMap = data.roleMap || buildRoleMap(parseRoleConnections(nextAnswer));
+
+      setAnswer(nextAnswer);
       setReportUrl(data.reportUrl || "");
       setSource(data.source || "live");
+      setRoleMap(nextRoleMap);
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Something went wrong.";
       setError(message);
       setAnswer("");
       setReportUrl("");
       setSource(null);
+      setRoleMap(null);
+      setSelectedRoleId(null);
     } finally {
       setLoading(false);
     }
@@ -592,7 +778,7 @@ export default function Home() {
       <nav className="h-14 border-b border-border bg-surface">
         <div className="mx-auto flex h-full max-w-[860px] items-center justify-between px-6">
           <span className="font-display text-[20px] text-primary">OrgOS</span>
-          <a href="https://careeros.vercel.app" target="_blank" rel="noreferrer" className="text-[14px] text-muted transition hover:text-primary">
+          <a href="https://careeros-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-[14px] text-muted transition hover:text-primary">
             {"-> CareerOS"}
           </a>
         </div>
@@ -619,7 +805,7 @@ export default function Home() {
                 id="company"
                 value={company}
                 onChange={(event) => setCompany(event.target.value)}
-                placeholder="e.g. Figma, Deloitte, Tata 1MG"
+                placeholder="e.g. Figma, Deloitte, Infosys"
                 className="w-full rounded-[6px] border border-border bg-surface px-4 py-3 text-[15px] text-text outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(27,79,114,0.1)]"
               />
             </div>
@@ -676,7 +862,7 @@ export default function Home() {
                   />
                 ))}
               </div>
-              <p className="text-[14px] italic text-muted">OrgOS is researching...</p>
+              <p className="text-[14px] italic text-muted">Analyzing {activeCompanyName || "this company"}...</p>
             </section>
           ) : null}
 
@@ -707,12 +893,12 @@ export default function Home() {
 
           {showRoleMap ? (
             <>
-              <RoleEvolutionMap connections={roleConnections} selectedRole={selectedRole} onSelectRole={setSelectedRole} />
+              <RoleEvolutionMap roleMap={derivedRoleMap} selectedRoleId={selectedRoleId} onSelectRole={setSelectedRoleId} />
               <div
                 className="overflow-hidden transition-[max-height] duration-350 ease-in-out"
                 style={{ maxHeight: selectedRole ? "640px" : "0px" }}
               >
-                {selectedRole ? <LearningPathPanel role={selectedRole} onClose={() => setSelectedRole(null)} /> : null}
+                {selectedRole ? <LearningPathPanel role={selectedRole} onClose={() => setSelectedRoleId(null)} /> : null}
               </div>
             </>
           ) : null}
@@ -720,7 +906,7 @@ export default function Home() {
 
         <footer className="mt-20 flex items-center justify-between border-t border-border py-8 text-[13px] text-muted max-sm:flex-col max-sm:items-start max-sm:gap-3">
           <span>OrgOS by EvolutionOS</span>
-          <a href="https://careeros.vercel.app" target="_blank" rel="noreferrer" className="text-primary">
+          <a href="https://careeros-supriya.vercel.app/" target="_blank" rel="noreferrer" className="text-primary">
             {"-> Try CareerOS"}
           </a>
         </footer>
