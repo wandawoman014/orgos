@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-accent: var(--color-accent);
+  --color-surface: var(--color-surface);
+}
+
 :root {
   --color-bg: #f5f0e8;
   --color-text: #1c1917;
