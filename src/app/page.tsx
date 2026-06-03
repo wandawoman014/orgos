@@ -110,6 +110,8 @@ type OrgTemplateValues = {
   questionFocus: string;
 };
 
+const GENERIC_ORG_REPORT_URL = "https://drive.google.com/drive/folders/1VSCUVd2pwafNyXxPFj02dVPv5wEv3Ba9?usp=sharing";
+
 const knownCompanies = ["Figma", "Accenture", "McKinsey", "Goldman Sachs", "Deloitte", "Infosys", "Tata 1MG"];
 const teamKeywords: Array<{ label: string; matcher: RegExp }> = [
   { label: "Leadership", matcher: /\bleadership\b|\bleaders\b|\bexecutive\b/i },
@@ -548,10 +550,16 @@ function AnswerContent({ answer }: { answer: string }) {
           return (
             <ul key={`${block.type}-${index}`} className="mb-4 list-none p-0">
               {block.items.map((item) => (
-                <li key={item} className="mb-2.5 rounded-[10px] border border-border px-4 py-3 text-[15px] leading-7 text-text last:mb-0">
-                  <span className="mr-2.5 inline-block h-2 w-2 rounded-full bg-primary align-middle" />
-                  <span className="align-middle">{item}</span>
-                </li>
+                /:$/.test(item) ? (
+                  <li key={item} className="mb-2 pt-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted last:mb-0">
+                    {item.slice(0, -1)}
+                  </li>
+                ) : (
+                  <li key={item} className="mb-2.5 rounded-[10px] border border-border px-4 py-3 text-[15px] leading-7 text-text last:mb-0">
+                    <span className="mr-2.5 inline-block h-2 w-2 rounded-full bg-primary align-middle" />
+                    <span className="align-middle">{item}</span>
+                  </li>
+                )
               ))}
             </ul>
           );
@@ -916,7 +924,14 @@ export default function Home() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!message.trim() || loading) {
+    if (loading) {
+      return;
+    }
+
+    if (!message.trim()) {
+      setError("Please type your question or use the template first.");
+      setNeedsFollowUp(false);
+      setFollowUpQuestion("");
       return;
     }
 
@@ -1119,23 +1134,16 @@ export default function Home() {
             <section className="fade-in mt-8 rounded-[6px] border border-border border-l-[3px] border-l-primary bg-surface px-8 py-7 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
               <AnswerContent answer={answer} />
               <div className="my-6 border-t border-border" />
-              {reportUrl ? (
+              {(reportUrl || GENERIC_ORG_REPORT_URL) ? (
                 <a
-                  href={reportUrl}
+                  href={reportUrl || GENERIC_ORG_REPORT_URL}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex rounded-[6px] border border-primary bg-transparent px-5 py-2.5 text-[14px] text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
                 >
-                  Get Full Report
+                  Open Full Report Doc
                 </a>
-              ) : (
-                <button
-                  type="button"
-                  className="inline-flex rounded-[6px] border border-primary bg-transparent px-5 py-2.5 text-[14px] text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
-                >
-                  Get Full Report
-                </button>
-              )}
+              ) : null}
               {source ? <p className="mt-3 text-[12px] text-muted">Source: {source === "live" ? "Live intelligence" : "Sample fallback"}</p> : null}
             </section>
           ) : null}
