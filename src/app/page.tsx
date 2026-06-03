@@ -106,10 +106,8 @@ type EditableChipProps = {
 
 type OrgTemplateValues = {
   company: string;
-  team: string;
-  priority: string;
-  risk: string;
-  functionName: string;
+  yearlyGoal: string;
+  questionFocus: string;
 };
 
 const knownCompanies = ["Figma", "Accenture", "McKinsey", "Goldman Sachs", "Deloitte", "Infosys", "Tata 1MG"];
@@ -656,37 +654,31 @@ function RoleEvolutionMap({
                 className="mb-3 rounded-[6px] border border-border bg-surface px-4 py-3 shadow-[0_1px_3px_rgba(28,25,23,0.08)]"
                 style={{ borderLeft: `3px solid ${borderColor}` }}
               >
-                <p className="text-[14px] font-semibold text-text">{node.label}</p>
-                <p className="mt-0.5 text-[12px] text-muted">{node.department}</p>
+                <p className="text-[14px] font-medium text-text">{node.label}</p>
+                <p className="mt-1 text-[12px] text-muted">{node.department}</p>
               </article>
             );
           })}
         </div>
 
-        <div className="flex items-stretch justify-center max-md:hidden">
-          <svg width="80" height={svgHeight} viewBox={`0 0 80 ${svgHeight}`} fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <marker id="orgos-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L9,3 z" fill="var(--color-primary)" />
-              </marker>
-            </defs>
-            {roleMap.edges.map((edge, index) => {
+        <div className="relative flex items-center justify-center max-md:hidden">
+          <svg viewBox={`0 0 80 ${svgHeight}`} className="h-full w-full" preserveAspectRatio="none" aria-hidden="true">
+            {roleMap.edges.map((edge) => {
               const startY = currentY.get(edge.from);
               const endY = futureY.get(edge.to);
-              if (!startY || !endY) {
+              if (startY === undefined || endY === undefined) {
                 return null;
               }
 
               return (
                 <path
                   key={`${edge.from}-${edge.to}`}
-                  className="role-line"
-                  d={`M8 ${startY} C 28 ${startY}, 52 ${endY}, 72 ${endY}`}
-                  stroke="var(--color-primary)"
-                  strokeWidth="1.5"
-                  opacity="0.4"
-                  markerEnd="url(#orgos-arrow)"
-                  style={{ animationDelay: `${index * 120}ms` }}
+                  d={`M 8 ${startY} C 30 ${startY}, 50 ${endY}, 72 ${endY}`}
+                  fill="none"
+                  stroke="#1B4F72"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  opacity="0.85"
                 />
               );
             })}
@@ -695,13 +687,17 @@ function RoleEvolutionMap({
 
         <div>
           {futureNodes.map((node) => {
-            const active = selectedRoleId === node.id;
+            const isActive = node.id === selectedRoleId;
             return (
               <button
                 key={node.id}
                 type="button"
-                onClick={() => onSelectRole(node.id)}
-                className={`mb-3 w-full rounded-[6px] bg-primary px-4 py-3 text-left text-white shadow-[0_1px_3px_rgba(28,25,23,0.08)] transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(27,79,114,0.25)] ${active ? "ring-2 ring-[rgba(255,255,255,0.45)]" : ""}`}
+                onClick={() => onSelectRole(isActive ? null : node.id)}
+                className={`mb-3 w-full rounded-[6px] border px-4 py-3 text-left shadow-[0_1px_3px_rgba(28,25,23,0.08)] transition ${
+                  isActive
+                    ? "border-primary bg-primary"
+                    : "border-transparent bg-[rgba(27,79,114,0.9)] hover:bg-primary"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -807,10 +803,8 @@ export default function Home() {
   const [followUpQuestion, setFollowUpQuestion] = useState("");
   const [templateValues, setTemplateValues] = useState<OrgTemplateValues>({
     company: "Figma",
-    team: "design",
-    priority: "trust and adoption",
-    risk: "AI adoption risk",
-    functionName: "design",
+    yearlyGoal: "reduce time to AI feature shipment by 25%",
+    questionFocus: "how to restructure our product, engineering and design teams",
   });
 
   const derivedRoleMap = useMemo(() => {
@@ -1051,92 +1045,47 @@ export default function Home() {
               )}
             </div>
 
-            <div className="mt-5">
-              <p className="mb-3 text-[12px] uppercase tracking-[0.08em] text-muted">Try a fill-in-the-blank prompt</p>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-[12px] border border-border bg-surface p-4">
-                  <p className="mb-3 text-[13px] font-medium text-text">Role evolution</p>
-                  <div className="space-y-2 text-[13px] leading-6 text-muted">
-                    <span>At</span>
-                    <input
-                      value={templateValues.company}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                    <span>what roles should</span>
-                    <input
-                      value={templateValues.team}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, team: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                    <span>evolve into as AI changes</span>
-                    <input
-                      value={templateValues.priority}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, priority: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      applyTemplate(`At ${templateValues.company}, what roles should ${templateValues.team} evolve into as AI changes ${templateValues.priority}?`)
-                    }
-                    className="mt-4 text-[13px] font-medium text-primary"
-                  >
-                    Use template
-                  </button>
+            <div className="mt-5 rounded-[18px] border border-border bg-surface p-5 shadow-[0_1px_3px_rgba(28,25,23,0.06)]">
+              <div className="flex items-start justify-between gap-4 max-md:flex-col">
+                <div>
+                  <p className="text-[12px] uppercase tracking-[0.08em] text-muted">Guided prompt</p>
+                  <h3 className="font-display mt-2 text-[24px] leading-tight text-text">Fill in the blanks, then ask OrgOS</h3>
+                  <p className="mt-2 max-w-[560px] text-[14px] leading-6 text-muted">
+                    Use one clear operating sentence so the question feels strategic, not technical.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyTemplate(
+                      `At ${templateValues.company}, our goal this year is to ${templateValues.yearlyGoal}, and for that we need to know ${templateValues.questionFocus}.`,
+                    )
+                  }
+                  className="rounded-[999px] border border-primary px-4 py-2 text-[13px] font-medium text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
+                >
+                  Use this template
+                </button>
+              </div>
 
-                <div className="rounded-[12px] border border-border bg-surface p-4">
-                  <p className="mb-3 text-[13px] font-medium text-text">Leadership action</p>
-                  <div className="space-y-2 text-[13px] leading-6 text-muted">
-                    <span>At</span>
-                    <input
-                      value={templateValues.company}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                    <span>what should leadership do first to reduce</span>
-                    <input
-                      value={templateValues.risk}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, risk: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => applyTemplate(`At ${templateValues.company}, what should leadership do first to reduce ${templateValues.risk}?`)}
-                    className="mt-4 text-[13px] font-medium text-primary"
-                  >
-                    Use template
-                  </button>
-                </div>
-
-                <div className="rounded-[12px] border border-border bg-surface p-4">
-                  <p className="mb-3 text-[13px] font-medium text-text">AI reorg</p>
-                  <div className="space-y-2 text-[13px] leading-6 text-muted">
-                    <span>How should</span>
-                    <input
-                      value={templateValues.company}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                    <span>reorganize</span>
-                    <input
-                      value={templateValues.functionName}
-                      onChange={(event) => setTemplateValues((current) => ({ ...current, functionName: event.target.value }))}
-                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
-                    />
-                    <span>for AI?</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => applyTemplate(`How should ${templateValues.company} reorganize ${templateValues.functionName} for AI?`)}
-                    className="mt-4 text-[13px] font-medium text-primary"
-                  >
-                    Use template
-                  </button>
-                </div>
+              <div className="mt-5 rounded-[14px] bg-[rgba(27,79,114,0.04)] px-4 py-4 text-[18px] leading-[1.9] text-text max-md:text-[16px]">
+                <span className="text-muted">At </span>
+                <input
+                  value={templateValues.company}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
+                  className="mx-1 inline-block min-w-[120px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none"
+                />
+                <span className="text-muted"> our goal this year is to </span>
+                <input
+                  value={templateValues.yearlyGoal}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, yearlyGoal: event.target.value }))}
+                  className="mx-1 inline-block min-w-[320px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none max-md:min-w-[220px]"
+                />
+                <span className="text-muted"> and for that we need to know </span>
+                <input
+                  value={templateValues.questionFocus}
+                  onChange={(event) => setTemplateValues((current) => ({ ...current, questionFocus: event.target.value }))}
+                  className="mx-1 inline-block min-w-[360px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none max-md:min-w-[240px]"
+                />
               </div>
             </div>
 
