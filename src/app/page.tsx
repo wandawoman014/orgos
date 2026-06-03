@@ -104,6 +104,14 @@ type EditableChipProps = {
   onRemove: (key: OrgContextKey) => void;
 };
 
+type OrgTemplateValues = {
+  company: string;
+  team: string;
+  priority: string;
+  risk: string;
+  functionName: string;
+};
+
 const knownCompanies = ["Figma", "Accenture", "McKinsey", "Goldman Sachs", "Deloitte", "Infosys", "Tata 1MG"];
 const teamKeywords: Array<{ label: string; matcher: RegExp }> = [
   { label: "Leadership", matcher: /\bleadership\b|\bleaders\b|\bexecutive\b/i },
@@ -123,13 +131,6 @@ const orgIntentMatchers: Array<{ label: string; matcher: RegExp; tentative?: boo
   { label: "Leadership action", matcher: /leadership|what should .* do first|action/i },
   { label: "AI restructuring", matcher: /restructuring|reorgani[sz]ing|operating model/i },
   { label: "Team evolution", matcher: /team|function/i, tentative: true },
-];
-const suggestionChips = [
-  "What are the top future roles at Figma?",
-  "What change risks should Accenture leadership act on first?",
-  "How is McKinsey restructuring for AI?",
-  "Which roles will AI automate at Deloitte?",
-  "What should leadership do first at Infosys?",
 ];
 const fallbackConnections: RoleConnection[] = [
   {
@@ -275,6 +276,15 @@ function serializeContext(context: OrgContext) {
     ...(context.team?.value ? { team: context.team.value } : {}),
     ...(context.intent?.value ? { intent: context.intent.value } : {}),
   };
+}
+
+function cleanAnswerText(answer: string) {
+  return answer
+    .split("\n")
+    .map((line) => line.replace(/\*\*(.*?)\*\*/g, "$1").trimEnd())
+    .filter((line) => !/^ROUTE:/i.test(line.trim()))
+    .join("\n")
+    .trim();
 }
 
 function normalizeArrowLine(line: string) {
@@ -502,7 +512,7 @@ function getSelectedFutureRole(roleMap: RoleMap, selectedRoleId: string | null) 
 }
 
 function AnswerContent({ answer }: { answer: string }) {
-  const { intent, blocks } = useMemo(() => parseAnswerBlocks(answer), [answer]);
+  const { intent, blocks } = useMemo(() => parseAnswerBlocks(cleanAnswerText(answer)), [answer]);
 
   return (
     <div>
@@ -523,11 +533,13 @@ function AnswerContent({ answer }: { answer: string }) {
 
         if (block.type === "ordered") {
           return (
-            <ol key={`${block.type}-${index}`} className="mb-4 list-none p-0">
+            <ol key={`${block.type}-${index}`} className="mb-4 grid gap-3 p-0 md:grid-cols-2">
               {block.items.map((item, itemIndex) => (
-                <li key={item} className="relative mb-2.5 pl-6 text-[15px] leading-7 text-text last:mb-0">
-                  <span className="absolute left-0 top-0 font-semibold text-primary">{itemIndex + 1}.</span>
-                  {item}
+                <li key={item} className="rounded-[10px] border border-border bg-[rgba(27,79,114,0.03)] px-4 py-3 text-[15px] leading-7 text-text">
+                  <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-white">
+                    {itemIndex + 1}
+                  </span>
+                  <div>{item}</div>
                 </li>
               ))}
             </ol>
@@ -538,8 +550,8 @@ function AnswerContent({ answer }: { answer: string }) {
           return (
             <ul key={`${block.type}-${index}`} className="mb-4 list-none p-0">
               {block.items.map((item) => (
-                <li key={item} className="mb-2.5 text-[15px] leading-7 text-text last:mb-0">
-                  <span className="mr-2.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle" />
+                <li key={item} className="mb-2.5 rounded-[10px] border border-border px-4 py-3 text-[15px] leading-7 text-text last:mb-0">
+                  <span className="mr-2.5 inline-block h-2 w-2 rounded-full bg-primary align-middle" />
                   <span className="align-middle">{item}</span>
                 </li>
               ))}
@@ -769,7 +781,7 @@ function LearningPathPanel({ role, onClose }: { role: FutureRoleNode; onClose: (
         </div>
       ) : (
         <p className="text-[14px] italic text-muted">Full learning path available in your CareerOS report.</p>
-      ) : null}
+      )}
     </section>
   );
 }
@@ -793,6 +805,13 @@ export default function Home() {
   const [editingValue, setEditingValue] = useState("");
   const [needsFollowUp, setNeedsFollowUp] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [templateValues, setTemplateValues] = useState<OrgTemplateValues>({
+    company: "Figma",
+    team: "design",
+    priority: "trust and adoption",
+    risk: "AI adoption risk",
+    functionName: "design",
+  });
 
   const derivedRoleMap = useMemo(() => {
     if (roleMap) {
@@ -848,6 +867,18 @@ export default function Home() {
     setError("");
     if (textareaRef.current) {
       textareaRef.current.value = chip;
+      scheduleTextareaResize(textareaRef.current);
+    }
+  }
+
+  function applyTemplate(prompt: string) {
+    setMessage(prompt);
+    setContext(extractOrgContext(prompt));
+    setNeedsFollowUp(false);
+    setFollowUpQuestion("");
+    setError("");
+    if (textareaRef.current) {
+      textareaRef.current.value = prompt;
       scheduleTextareaResize(textareaRef.current);
     }
   }
@@ -996,6 +1027,7 @@ export default function Home() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
+              {chips.some((item) => item.chip) ? <p className="w-full text-[12px] uppercase tracking-[0.08em] text-muted">Detected context</p> : null}
               {chips.map((item) =>
                 item.chip ? (
                   <EditableChip
@@ -1019,17 +1051,93 @@ export default function Home() {
               )}
             </div>
 
-            <div className="chip-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
-              {suggestionChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => handleSuggestionClick(chip)}
-                  className="whitespace-nowrap rounded-full border border-border bg-surface px-3.5 py-2 text-[13px] text-muted transition hover:border-primary hover:text-primary"
-                >
-                  {chip}
-                </button>
-              ))}
+            <div className="mt-5">
+              <p className="mb-3 text-[12px] uppercase tracking-[0.08em] text-muted">Try a fill-in-the-blank prompt</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-[12px] border border-border bg-surface p-4">
+                  <p className="mb-3 text-[13px] font-medium text-text">Role evolution</p>
+                  <div className="space-y-2 text-[13px] leading-6 text-muted">
+                    <span>At</span>
+                    <input
+                      value={templateValues.company}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                    <span>what roles should</span>
+                    <input
+                      value={templateValues.team}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, team: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                    <span>evolve into as AI changes</span>
+                    <input
+                      value={templateValues.priority}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, priority: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      applyTemplate(`At ${templateValues.company}, what roles should ${templateValues.team} evolve into as AI changes ${templateValues.priority}?`)
+                    }
+                    className="mt-4 text-[13px] font-medium text-primary"
+                  >
+                    Use template
+                  </button>
+                </div>
+
+                <div className="rounded-[12px] border border-border bg-surface p-4">
+                  <p className="mb-3 text-[13px] font-medium text-text">Leadership action</p>
+                  <div className="space-y-2 text-[13px] leading-6 text-muted">
+                    <span>At</span>
+                    <input
+                      value={templateValues.company}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                    <span>what should leadership do first to reduce</span>
+                    <input
+                      value={templateValues.risk}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, risk: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate(`At ${templateValues.company}, what should leadership do first to reduce ${templateValues.risk}?`)}
+                    className="mt-4 text-[13px] font-medium text-primary"
+                  >
+                    Use template
+                  </button>
+                </div>
+
+                <div className="rounded-[12px] border border-border bg-surface p-4">
+                  <p className="mb-3 text-[13px] font-medium text-text">AI reorg</p>
+                  <div className="space-y-2 text-[13px] leading-6 text-muted">
+                    <span>How should</span>
+                    <input
+                      value={templateValues.company}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, company: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                    <span>reorganize</span>
+                    <input
+                      value={templateValues.functionName}
+                      onChange={(event) => setTemplateValues((current) => ({ ...current, functionName: event.target.value }))}
+                      className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-text outline-none"
+                    />
+                    <span>for AI?</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate(`How should ${templateValues.company} reorganize ${templateValues.functionName} for AI?`)}
+                    className="mt-4 text-[13px] font-medium text-primary"
+                  >
+                    Use template
+                  </button>
+                </div>
+              </div>
             </div>
 
             <button
