@@ -511,6 +511,7 @@ function LearningPathPanel({ role, onClose }: { role: FutureRole; onClose: () =>
 
 export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const [company, setCompany] = useState("");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
@@ -523,16 +524,23 @@ export default function Home() {
   const roleConnections = useMemo(() => parseRoleConnections(answer), [answer]);
   const showRoleMap = roleConnections.length > 0;
 
-  function resizeTextarea(element: HTMLTextAreaElement) {
-    element.style.height = "auto";
-    element.style.height = `${Math.max(element.scrollHeight, 100)}px`;
+  function scheduleTextareaResize(element: HTMLTextAreaElement) {
+    if (resizeFrameRef.current !== null) {
+      cancelAnimationFrame(resizeFrameRef.current);
+    }
+
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      element.style.height = "auto";
+      element.style.height = `${Math.max(element.scrollHeight, 100)}px`;
+      resizeFrameRef.current = null;
+    });
   }
 
   function handleChipClick(chip: string) {
     setQuery(chip);
     if (textareaRef.current) {
       textareaRef.current.value = chip;
-      resizeTextarea(textareaRef.current);
+      scheduleTextareaResize(textareaRef.current);
     }
   }
 
@@ -626,7 +634,7 @@ export default function Home() {
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
-                  resizeTextarea(event.target);
+                  scheduleTextareaResize(event.target);
                 }}
                 placeholder="e.g. What are the top 3 future roles in the Design team? Show me change risks at this org."
                 className="min-h-[100px] w-full resize-none rounded-[6px] border border-border bg-surface px-4 py-3 text-[15px] text-text outline-none transition focus:border-primary focus:shadow-[0_0_0_3px_rgba(27,79,114,0.1)]"
