@@ -454,19 +454,122 @@ function takeFirstSentence(text: string) {
   return match ? match[0].trim() : normalized;
 }
 
+function stripMarkdownMarkers(text: string) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/g, "")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .trim();
+}
+
+function normalizeSummaryCandidate(text: string) {
+  return stripMarkdownMarkers(text)
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+}
+
+function isOrgBoilerplate(text: string) {
+  const normalized = normalizeSummaryCandidate(text);
+  if (!normalized) {
+    return true;
+  }
+
+  return (
+    /\bthose are strong, concrete targets\b/i.test(normalized) ||
+    /\bline up well with\b/i.test(normalized) ||
+    /\borgos run\b/i.test(normalized) ||
+    /\bRUN-\d+\b/i.test(normalized) ||
+    /\busing your rolemap\b/i.test(normalized) ||
+    /\bhere'?s how i'?d translate that\b/i.test(normalized) ||
+    /\breport available\b/i.test(normalized) ||
+    /\bopen report\b/i.test(normalized) ||
+    /\bgoogle doc\b/i.test(normalized) ||
+    /\bgoogle drive\b/i.test(normalized)
+  );
+}
+
+function isOrgInsightSentence(text: string) {
+  const normalized = normalizeSummaryCandidate(text);
+  if (!normalized || isOrgBoilerplate(normalized)) {
+    return false;
+  }
+
+  return (
+    /\b(need to|should|must|priority|critical|important|leadership|roles?|teams?|capabilit|operating model|execution)\b/i.test(normalized) &&
+    !/^(lock|define|make|prove|train|publish|execute)\b/i.test(normalized)
+  );
+}
+
+function isOrgMoveLine(text: string) {
+  const normalized = normalizeSummaryCandidate(text);
+  if (!normalized || isOrgBoilerplate(normalized)) {
+    return false;
+  }
+
+  return /^(lock|define|make|prove|publish|align|build|clarify|establish|equip|activate|execute)\b/i.test(normalized);
+}
+
+function isLeadershipActionSentence(text: string) {
+  const normalized = normalizeSummaryCandidate(text);
+  if (!normalized || isOrgBoilerplate(normalized)) {
+    return false;
+  }
+
+  return /\b(leadership|should|next|immediate|start|focus|prioritize|translate into|deliver|define|publish)\b/i.test(normalized);
+}
+
+function findReportLink(reportUrl: string | undefined, answer: string) {
+  const direct = reportUrl?.trim();
+  if (direct && /^https?:\/\/.+/i.test(direct)) {
+    return direct;
+  }
+
+  const match = answer.match(/https?:\/\/(?:docs|drive)\.google\.com\/[^\s)>"]+/i);
+  return match?.[0] || "";
+}
+
 function summarizeOrgBrief(answer: string) {
   const { blocks } = parseAnswerBlocks(cleanAnswerText(answer));
   const paragraphs = blocks.filter((block): block is Extract<AnswerBlock, { type: "paragraph" }> => block.type === "paragraph");
   const ordered = blocks.find((block): block is Extract<AnswerBlock, { type: "ordered" }> => block.type === "ordered");
   const unordered = blocks.find((block): block is Extract<AnswerBlock, { type: "unordered" }> => block.type === "unordered");
-  const mainInsight = takeFirstSentence(paragraphs[0]?.text || "");
-  const priorityMoves = (ordered?.items || unordered?.items || paragraphs.slice(1).map((item) => item.text)).slice(0, 3);
+  const seen = new Set<string>();
+  const paragraphItems = paragraphs
+    .map((item) => normalizeSummaryCandidate(item.text))
+    .filter((item) => item && !isOrgBoilerplate(item))
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  const listItems = (ordered?.items || unordered?.items || [])
+    .map((item) => normalizeSummaryCandidate(item))
+    .filter((item) => item && !isOrgBoilerplate(item))
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+  const mainInsightCandidate = paragraphItems.find(isOrgInsightSentence) || paragraphItems[0] || listItems.find(isOrgInsightSentence) || "";
+  const priorityMoves = listItems.filter((item) => item !== mainInsightCandidate && (isOrgMoveLine(item) || item.length > 20)).slice(0, 3);
   const nextMoveCandidate =
-    paragraphs.find((item) => /\b(next|should|priority|leadership|act|focus|start)\b/i.test(item.text))?.text || paragraphs[1]?.text || priorityMoves[0] || "";
+    paragraphItems.find((item) => item !== mainInsightCandidate && isLeadershipActionSentence(item)) ||
+    listItems.find((item) => !priorityMoves.includes(item) && isLeadershipActionSentence(item)) ||
+    "";
   const leadershipNext = takeFirstSentence(nextMoveCandidate);
 
   return {
-    mainInsight,
+    mainInsight: takeFirstSentence(mainInsightCandidate),
     priorityMoves,
     leadershipNext,
   };
@@ -691,6 +794,7 @@ function AnswerContent({ answer }: { answer: string }) {
 function OrgBrief({ answer, reportUrl }: { answer: string; reportUrl: string }) {
   const [expanded, setExpanded] = useState(false);
   const brief = useMemo(() => summarizeOrgBrief(answer), [answer]);
+  const resolvedReportUrl = useMemo(() => findReportLink(reportUrl, answer), [reportUrl, answer]);
   const hasSummary = brief.mainInsight || brief.priorityMoves.length > 0 || brief.leadershipNext;
 
   return (
@@ -700,9 +804,9 @@ function OrgBrief({ answer, reportUrl }: { answer: string; reportUrl: string }) 
           <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Org Intelligence Brief</p>
           <h2 className="font-display mt-2 text-[28px] text-text">What matters now</h2>
         </div>
-        {reportUrl ? (
+        {resolvedReportUrl ? (
           <a
-            href={reportUrl}
+            href={resolvedReportUrl}
             target="_blank"
             rel="noreferrer"
             className="inline-flex rounded-full border border-primary px-4 py-2 text-[13px] font-medium text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
