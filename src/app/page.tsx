@@ -959,7 +959,7 @@ export default function Home() {
     setActiveCompanyName(companyLabel);
 
     try {
-      const response = await fetch("/api/orgos", {
+      const response = await fetch("/api/ask", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

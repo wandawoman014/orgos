@@ -311,23 +311,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Message cannot be blank." }, { status: 400 });
   }
 
-  if (!company) {
-    return NextResponse.json({
-      answer: "",
-      source: "mock",
-      needsFollowUp: true,
-      followUpQuestion: "Which company should I analyze?",
-    } satisfies OrgOSApiResponse);
-  }
-
   const webhookUrl = (process.env.WEBHOOK_URL || process.env.MAKE_WEBHOOK_URL || "").trim();
   if (!webhookUrl) {
     return NextResponse.json({
-      answer: fallbackAnswer(company, intent),
+      answer: fallbackAnswer(company || "this organization", intent),
       roleMap: fallbackRoleMap,
       source: "mock",
-      companyId,
-      companyName: company,
+      ...(companyId ? { companyId } : {}),
+      ...(company ? { companyName: company } : {}),
     } satisfies OrgOSApiResponse);
   }
 
@@ -341,7 +332,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         message,
         query: message,
-        company,
+        ...(company ? { company } : {}),
         ...(companyId ? { company_id: companyId } : {}),
         ...(userId ? { user_id: userId } : {}),
         ...(memoryContext ? { memory_context: memoryContext } : {}),
@@ -351,7 +342,7 @@ export async function POST(req: NextRequest) {
         ...(questionFocus ? { question_focus: questionFocus } : {}),
         mode: "org",
         context: {
-          company,
+          ...(company ? { company } : {}),
           ...(team ? { team } : {}),
           ...(intent ? { intent } : {}),
           ...(goal ? { goal } : {}),
@@ -370,7 +361,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Data mismatch - please retry" }, { status: 409 });
     }
 
-    const answer = normalized.answer || fallbackAnswer(company, intent);
+    const answer = normalized.answer || fallbackAnswer(company || "this organization", intent);
     const roleMap = normalized.roleMap || (normalized.needsFollowUp ? undefined : fallbackRoleMap);
 
     if (userId && answer) {
