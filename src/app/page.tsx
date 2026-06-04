@@ -546,47 +546,30 @@ function findReportLink(reportUrl: string | undefined, answer: string) {
   return "";
 }
 
-function summarizeOrgBrief(answer: string) {
-  const { blocks } = parseAnswerBlocks(cleanAnswerText(answer));
-  const paragraphs = blocks.filter((block): block is Extract<AnswerBlock, { type: "paragraph" }> => block.type === "paragraph");
-  const ordered = blocks.find((block): block is Extract<AnswerBlock, { type: "ordered" }> => block.type === "ordered");
-  const unordered = blocks.find((block): block is Extract<AnswerBlock, { type: "unordered" }> => block.type === "unordered");
-  const seen = new Set<string>();
-  const paragraphItems = paragraphs
-    .map((item) => normalizeSummaryCandidate(item.text))
-    .filter((item) => item && !isOrgBoilerplate(item))
-    .filter((item) => {
-      const key = item.toLowerCase();
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  const listItems = (ordered?.items || unordered?.items || [])
-    .map((item) => normalizeSummaryCandidate(item))
-    .filter((item) => item && !isOrgBoilerplate(item))
-    .filter((item) => {
-      const key = item.toLowerCase();
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
+function extractVisibleExcerpt(answer: string) {
+  const cleaned = cleanAnswerText(answer);
+  const { blocks } = parseAnswerBlocks(cleaned);
+  const segments = blocks.flatMap((block) => {
+    if (block.type === "paragraph") {
+      const text = normalizeSummaryCandidate(block.text);
+      return text && !isOrgBoilerplate(text) ? [text] : [];
+    }
 
-  const mainInsightCandidate = paragraphItems.find(isOrgInsightSentence) || paragraphItems[0] || listItems.find(isOrgInsightSentence) || "";
-  const priorityMoves = listItems.filter((item) => item !== mainInsightCandidate && (isOrgMoveLine(item) || item.length > 20)).slice(0, 3);
-  const nextMoveCandidate =
-    paragraphItems.find((item) => item !== mainInsightCandidate && isLeadershipActionSentence(item)) ||
-    listItems.find((item) => !priorityMoves.includes(item) && isLeadershipActionSentence(item)) ||
-    "";
-  const leadershipNext = takeFirstSentence(nextMoveCandidate);
+    if (block.type === "ordered" || block.type === "unordered") {
+      return block.items
+        .map((item) => normalizeSummaryCandidate(item))
+        .filter((item) => item && !isOrgBoilerplate(item))
+        .map((item) => (block.type === "unordered" ? `• ${item}` : item));
+    }
+
+    return [];
+  });
+
+  const preview = segments.slice(0, 2);
 
   return {
-    mainInsight: takeFirstSentence(mainInsightCandidate),
-    priorityMoves,
-    leadershipNext,
+    preview,
+    hasMore: segments.length > preview.length,
   };
 }
 
@@ -805,59 +788,42 @@ function AnswerContent({ answer }: { answer: string }) {
 
 function OrgBrief({ answer, reportUrl }: { answer: string; reportUrl: string }) {
   const [expanded, setExpanded] = useState(false);
-  const brief = useMemo(() => summarizeOrgBrief(answer), [answer]);
+  const brief = useMemo(() => extractVisibleExcerpt(answer), [answer]);
   const resolvedReportUrl = useMemo(() => findReportLink(reportUrl, answer), [reportUrl, answer]);
-  const hasSummary = brief.mainInsight || brief.priorityMoves.length > 0 || brief.leadershipNext;
+  const hasSummary = brief.preview.length > 0;
 
   return (
     <section className="fade-in mt-10 rounded-[20px] border border-border bg-surface px-7 py-7 shadow-[0_10px_30px_rgba(28,25,23,0.05)]">
-      <div className="flex items-start justify-between gap-4 max-sm:flex-col">
+      <div>
         <div>
           <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Org Intelligence Brief</p>
           <h2 className="font-display mt-2 text-[28px] text-text">What matters now</h2>
         </div>
-        {resolvedReportUrl ? (
-          <a
-            href={resolvedReportUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex rounded-full border border-primary px-4 py-2 text-[13px] font-medium text-primary transition hover:bg-[rgba(27,79,114,0.05)]"
-          >
-            Open report
-          </a>
-        ) : null}
       </div>
 
       {hasSummary ? (
         <div className="mt-7 grid gap-6">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Main insight</p>
-            <p className="mt-2 text-[18px] leading-8 text-text">{brief.mainInsight || cleanAnswerText(answer)}</p>
-          </div>
-
-          {brief.priorityMoves.length > 0 ? (
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Key moves</p>
-              <div className="mt-3 grid gap-3">
-                {brief.priorityMoves.map((item, index) => (
-                  <div key={item} className="flex items-start gap-3 rounded-[14px] bg-[rgba(27,79,114,0.04)] px-4 py-4">
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-white">
-                      {index + 1}
-                    </span>
-                    <p className="text-[15px] leading-7 text-text">{item}</p>
-                  </div>
-                ))}
+          {brief.preview.map((item, index) =>
+            item.startsWith("• ") ? (
+              <div key={`${item}-${index}`} className="flex items-start gap-3 text-[15px] leading-7 text-text">
+                <span className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <p>{item.replace(/^•\s+/, "")}</p>
               </div>
-            </div>
-          ) : null}
-
-          {brief.leadershipNext ? (
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Next leadership action</p>
-              <p className="mt-2 text-[15px] leading-7 text-text">{brief.leadershipNext}</p>
-            </div>
-          ) : null}
+            ) : (
+              <p key={`${item}-${index}`} className={`text-text ${index === 0 ? "text-[18px] leading-8" : "text-[15px] leading-7"}`}>
+                {item}
+              </p>
+            ),
+          )}
         </div>
+      ) : null}
+
+      {resolvedReportUrl ? (
+        <p className="mt-5 text-[14px] leading-6 text-muted">
+          <a href={resolvedReportUrl} target="_blank" rel="noreferrer" className="font-medium text-primary underline-offset-4 hover:underline">
+            Open report
+          </a>
+        </p>
       ) : null}
 
       <div className="mt-6 border-t border-border pt-5">
@@ -1282,6 +1248,7 @@ export default function Home() {
     { key: "team", label: "Team", chip: context.team, accentClass: "border-border bg-surface" },
     { key: "intent", label: "Intent", chip: context.intent, accentClass: "border-border bg-surface" },
   ];
+  const hideHelpers = loading || !!answer || !!followUpQuestion;
 
   return (
     <main className="bg-bg text-text">
@@ -1344,32 +1311,44 @@ export default function Home() {
               ) : null}
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {chips.some((item) => item.chip) ? <p className="w-full text-[11px] uppercase tracking-[0.1em] text-muted">Detected context</p> : null}
-              {chips.map((item) =>
-                item.chip ? (
-                  <EditableChip
-                    key={item.key}
-                    chipKey={item.key}
-                    label={item.label}
-                    chip={item.chip}
-                    editingKey={editingKey}
-                    editingValue={editingValue}
-                    accentClass={item.accentClass}
-                    onStartEdit={handleStartEdit}
-                    onChangeValue={setEditingValue}
-                    onSave={handleSaveEdit}
-                    onCancel={() => {
-                      setEditingKey(null);
-                      setEditingValue("");
-                    }}
-                    onRemove={handleRemoveChip}
-                  />
-                ) : null,
-              )}
-            </div>
+            {!loading && answer ? <OrgBrief answer={answer} reportUrl={reportUrl} /> : null}
 
-            <div className="mt-6 rounded-[18px] border border-border/80 bg-[rgba(255,255,255,0.7)] p-5">
+            {!loading && followUpQuestion ? (
+              <section className="fade-in mt-6 rounded-[6px] border border-border bg-surface px-6 py-5 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
+                <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-muted">Follow-up</p>
+                <p className="mt-2 text-[15px] leading-7 text-text">{followUpQuestion}</p>
+                <p className="mt-2 text-[13px] text-muted">Update the message or edit the chips above, then ask again.</p>
+              </section>
+            ) : null}
+
+            {!hideHelpers ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {chips.some((item) => item.chip) ? <p className="w-full text-[11px] uppercase tracking-[0.1em] text-muted">Detected context</p> : null}
+                  {chips.map((item) =>
+                    item.chip ? (
+                      <EditableChip
+                        key={item.key}
+                        chipKey={item.key}
+                        label={item.label}
+                        chip={item.chip}
+                        editingKey={editingKey}
+                        editingValue={editingValue}
+                        accentClass={item.accentClass}
+                        onStartEdit={handleStartEdit}
+                        onChangeValue={setEditingValue}
+                        onSave={handleSaveEdit}
+                        onCancel={() => {
+                          setEditingKey(null);
+                          setEditingValue("");
+                        }}
+                        onRemove={handleRemoveChip}
+                      />
+                    ) : null,
+                  )}
+                </div>
+
+                <div className="mt-6 rounded-[18px] border border-border/80 bg-[rgba(255,255,255,0.7)] p-5">
               <div className="flex items-start justify-between gap-4 max-md:flex-col">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.1em] text-muted">Optional helper</p>
@@ -1428,7 +1407,9 @@ export default function Home() {
                   className="mx-1 inline-block min-w-[360px] rounded-[10px] border border-[rgba(27,79,114,0.18)] bg-white px-3 py-2 text-[16px] font-medium text-text outline-none max-md:min-w-[240px]"
                 />
               </div>
-            </div>
+                </div>
+              </>
+            ) : null}
 
           </form>
 
@@ -1450,16 +1431,6 @@ export default function Home() {
                 ))}
               </div>
               <p className="text-[14px] italic text-muted">Analyzing {activeCompanyName || "this organization"}...</p>
-            </section>
-          ) : null}
-
-          {!loading && answer ? <OrgBrief answer={answer} reportUrl={reportUrl} /> : null}
-
-          {!loading && followUpQuestion ? (
-            <section className="fade-in mt-6 rounded-[6px] border border-border bg-surface px-6 py-5 shadow-[0_1px_3px_rgba(28,25,23,0.08)]">
-              <p className="text-[12px] font-medium uppercase tracking-[0.1em] text-muted">Follow-up</p>
-              <p className="mt-2 text-[15px] leading-7 text-text">{followUpQuestion}</p>
-              <p className="mt-2 text-[13px] text-muted">Update the message or edit the chips above, then ask again.</p>
             </section>
           ) : null}
 
