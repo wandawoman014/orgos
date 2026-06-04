@@ -1,4 +1,3 @@
-// redeploy marker: latest memory build
 import { getMemories, saveMemory } from "@/lib/memory";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -57,6 +56,8 @@ type OrgContext = {
   company?: string;
   team?: string;
   intent?: string;
+  goal?: string;
+  question_focus?: string;
 };
 
 const knownCompanyIds: Record<string, string> = {
@@ -146,6 +147,53 @@ const asString = (value: unknown) => (typeof value === "string" && value.trim().
 const normalizeLookup = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 const inferCompanyId = (company: string) => knownCompanyIds[normalizeLookup(company)];
+
+const sanitizeEntity = (value: string) =>
+  value
+    .replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const inferCompanyFromMessage = (message: string) => {
+  const normalized = normalizeLookup(message);
+  for (const [companyName] of Object.entries(knownCompanyIds)) {
+    if (normalized.includes(companyName)) {
+      return companyName.replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+  }
+
+  const patterns = [
+    /\bat\s+([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z0-9][A-Za-z0-9&.'-]*){0,5})(?=,|\s+our\b|\s+what\b|\s+how\b|\s+which\b|\s+should\b|\s+is\b|\s+are\b|[.?!]|$)/,
+    /\bfor\s+([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z0-9][A-Za-z0-9&.'-]*){0,5})(?=\s+(?:leadership|roles?|teams?|organization|org|company)\b)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    const candidate = sanitizeEntity(match?.[1] || "");
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return "";
+};
+
+const inferGoalFromMessage = (message: string) => {
+  const match =
+    message.match(/\bour goal(?:\s+this\s+year)?\s+is\s+to\s+(.+?)(?=,?\s+and\s+for\s+that\b|,?\s+and\s+we\s+need\b|[.?!]|$)/i) ||
+    message.match(/\bgoal\s+is\s+to\s+(.+?)(?=,?\s+and\b|[.?!]|$)/i);
+
+  return sanitizeEntity(match?.[1] || "");
+};
+
+const inferQuestionFocusFromMessage = (message: string) => {
+  const match =
+    message.match(/\bwe\s+need\s+to\s+know\s+(.+?)(?=[.?!]|$)/i) ||
+    message.match(/\bwant\s+to\s+understand\s+(.+?)(?=[.?!]|$)/i) ||
+    message.match(/\bhow\s+to\s+(.+?)(?=[.?!]|$)/i);
+
+  return sanitizeEntity(match?.[1] || "");
+};
 
 const normalizeRoleMapNode = (value: unknown): RoleMapNode | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -250,9 +298,12 @@ export async function POST(req: NextRequest) {
 
   const contextValue = payload.context && typeof payload.context === "object" && !Array.isArray(payload.context) ? (payload.context as OrgContext) : {};
   const message = asString(payload.message) || asString(payload.query) || asString(payload.question) || "";
-  const company = asString(contextValue.company) || asString(payload.company) || "";
+  const company = asString(contextValue.company) || asString(payload.company) || inferCompanyFromMessage(message) || "";
   const team = asString(contextValue.team) || asString(payload.team) || "";
   const intent = asString(contextValue.intent) || asString(payload.intent) || "";
+  const goal = asString(contextValue.goal) || asString(payload.goal) || inferGoalFromMessage(message) || undefined;
+  const questionFocus =
+    asString(contextValue.question_focus) || asString(payload.question_focus) || inferQuestionFocusFromMessage(message) || undefined;
   const companyId = asString(payload.company_id) || inferCompanyId(company) || undefined;
   const userId = asString(payload.user_id) || asString(payload.userId) || undefined;
 
@@ -296,11 +347,15 @@ export async function POST(req: NextRequest) {
         ...(memoryContext ? { memory_context: memoryContext } : {}),
         ...(team ? { team } : {}),
         ...(intent ? { intent } : {}),
+        ...(goal ? { goal } : {}),
+        ...(questionFocus ? { question_focus: questionFocus } : {}),
         mode: "org",
         context: {
           company,
           ...(team ? { team } : {}),
           ...(intent ? { intent } : {}),
+          ...(goal ? { goal } : {}),
+          ...(questionFocus ? { question_focus: questionFocus } : {}),
         },
       }),
       signal: AbortSignal.timeout(30000),
